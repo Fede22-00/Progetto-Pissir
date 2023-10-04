@@ -1,0 +1,43 @@
+.homepage-body{
+    background-color: black;
+}
+
+.title-homepage{
+    text-align: center;
+    font-family: Arial, Helvetica, sans-serif;
+    font-weight: bolder;
+    margin-top: 80px;
+    color: white;
+}
+
+.subtitle-homepage{
+    text-align: center;
+    color: white;
+    font-weight: lighter;
+}
+
+.table{
+    table-layout: fixed;
+}
+
+.table-container{
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 150px;
+    width: 50%;
+    table-layout: fixed;
+}
+
+.title-row{
+    border: thick solid white;
+    color: white;
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+    font-size: larger;
+    
+}
+
+tr.options td{
+    text-align: center;
+
+}

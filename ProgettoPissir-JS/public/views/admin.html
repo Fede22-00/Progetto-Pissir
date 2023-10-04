@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <title>Pagina Amministratore</title>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <!--stylesheets-->
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link href='../stylesheets/admin.css'  rel='stylesheet'>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" 
+    integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+    <!--scripts-->
+    <script defer src='../javascripts/admin.js'></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>
+</head>
+<body class="body-adminPage">
+  <header>
+    <div class="home-div">
+      <button id="home-button" class="btn btn-light">
+        <i class="bi bi-door-closed-fill"></i>
+        Home
+      </button>
+    </div>
+    <div class="header-div">
+      Accesso autorizzato
+    </div>
+  </header>
+  
+  </header>
+
+    <h1 class="title-adminPage">Pagina Amministratore</h1>
+    <h2 class="subtitle-adminPage">
+        Qui puoi visualizzare e modificare i parcheggi disponibili
+    </h2>
+    <div class="container container-addParking">
+      <button id="addParkingButton" type="button" class="btn btn-addParking btn-success" data-bs-toggle="modal" data-bs-target="#parkingModal">
+        <i class="bi bi-plus-circle"></i>
+        Aggiungi Nuovo Parcheggio
+      </button>
+
+      <!-- Modal -->
+      <div class="modal fade" id="parkingModal" tabindex="-1" aria-labelledby="modalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="modalLabel">Aggiungi un nuovo parcheggio</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <form id="addNewParkingForm">
+                <div class="mb-3">
+                  <label for="zoneNewParking" class="form-label">Zona</label>
+                  <input type="text" class="form-control" id="zoneNewParking" name="zoneNewParking" placeholder="Inserisci la zona del parcheggio" minlength="5" required >
+                </div>
+                <div class="mb-3">
+                  <label for="spotsNewParking" class="form-label">Posti</label>
+                  <input type="number" min="1" class="form-control" id="spotsNewParking" name="spotsNewParking" placeholder="1" required>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+                  <button type="submit" class="btn btn-primary">Aggiungi</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="container container-table">
+        <table  class="table">
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">ID</th>
+                <th scope="col">Zona</th>
+                <th scope="col">Posti</th>
+                <th scope="col">Stato</th>
+              </tr>
+            </thead>
+            <tbody id="parkingsTable">
+              <!--<tr>
+                <td>parco</td>
+                <td>1</td>
+                <td>
+                    <button id="changeStatusParking" value="0" type="button" class="btn btn-primary">Libero</button>
+                </td>
+              </tr>
+              </tr>-->
+            </tbody>
+          </table>
+    </div>
+</body>
+</html>
