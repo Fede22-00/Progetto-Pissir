@@ -1,5 +1,5 @@
 {
-  "name": "progettopissir-js",
+  "name": "smart-parking",
   "version": "1.0.0",
   "description": "progetto IoT per dei parcheggi intelligenti",
   "main": "WebServer.js",
