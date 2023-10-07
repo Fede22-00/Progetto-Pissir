@@ -8,7 +8,6 @@ const db = require('./db');
 const url= require('url');
 const querystring = require('querystring');
 const support=require('./supportFunctions');
-const jwt=require('jsonwebtoken')
 const {google} = require('googleapis');
 const mqtt = require('mqtt');
 const { error } = require('console');
