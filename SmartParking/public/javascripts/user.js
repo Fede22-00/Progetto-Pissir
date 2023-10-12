@@ -52,3 +52,6 @@ fetch(urlRoot+'/getAllParkings')
   .catch(error => {
     console.error('Si è verificato un errore nella richiesta:', error);
   });
+
+
+

@@ -10,7 +10,6 @@ const querystring = require('querystring');
 const support=require('./supportFunctions');
 const {google} = require('googleapis');
 const mqtt = require('mqtt');
-const { error } = require('console');
 
 
 //=================================================================================================|
@@ -68,7 +67,7 @@ const server = https.createServer(options,async (req, res) => {
     //console.log("params -> "+JSON.stringify(params));
     //console.log("--------------")
     
-    // GET "/"
+    // GET homepage
     if (req.method === 'GET' && pathname === '/') {
         nameFile='root';
         filePath = path.join(__dirname, 'public/views', `${nameFile}.html`);
@@ -76,12 +75,13 @@ const server = https.createServer(options,async (req, res) => {
         support.readFile(filePath,contentType,res);
     }
 
-    //--------------AUTORIZZAZIONE AUTH2
+    //GET AUTORIZZAZIONE Google OAUTH2
     else if(req.method === 'GET' && pathname==='/auth/google'){
       res.writeHead(301, { "Location": authorizationUrl });
       res.end();
     }
 
+    //GET Callback autorizzazione
     else if(req.method === 'GET' && pathname==='/auth/google/callback'){
       // Handle the OAuth 2.0 server response
       let q = url.parse(req.url,true).query;
@@ -92,6 +92,7 @@ const server = https.createServer(options,async (req, res) => {
         // Get access and refresh tokens (if access_type is offline)
         oauth2Client.getToken(q.code).then((tokens)=>{
           oauth2Client.setCredentials(tokens);
+          console.log(oauth2Client.credentials);
           res.writeHead(301,{'Location':`https://localhost:8443/admin?code=true`})
           res.end()
         })
@@ -100,8 +101,8 @@ const server = https.createServer(options,async (req, res) => {
 
     }
 
-    //------------------PAGINA AMMINISTRATORE------------------
-    // GET "/admin"
+    //---------------------------------------------------------AREA AMMINISTRATORE
+    // GET Pagina amministratore
     else if (req.method === 'GET' && pathname === '/admin') {
       if(params.code==="true"){
           nameFile='admin';
@@ -114,9 +115,128 @@ const server = https.createServer(options,async (req, res) => {
         res.end()
       }
     }
-    
-    //GET PER LE RISORSE
-    else if (req.method === 'GET' && pathname === '/getAllParkings') {
+
+     // PUT "/admin/changeStatusParking" per cambiare lo stato di un parcheggio
+     else if (req.method === 'PUT' && pathname === '/admin/changeStatusParking') {
+
+      // Inizializzare una stringa per memorizzare i dati ricevuti
+      let body = '';
+      
+      // Gestire i dati ricevuti
+      req.on('data', (chunk) => {
+       body += chunk;
+      });
+
+      // Alla fine dei dati ricevuti
+      req.on('end', () => {
+      try {
+          // Parsifico i dati JSON ricevuti
+          const data = JSON.parse(body).split(":");
+
+          //Metto i dati in un oggetto per comodità
+          const values={"id":data[0], "currentStatus":data[1]}
+          //preparo il nuovo valore che è l'opposto di quello attuale
+          var newValue=(values.currentStatus==0)?1:0;
+
+          // Qui puoi gestire i dati come preferisci, ad esempio aggiornando un database
+          const sqlChangeStatusParking='UPDATE Parcheggi SET Stato = ? WHERE ID = ?'
+          db.run(sqlChangeStatusParking, [newValue, values.id], function(err) {
+              if (err) {
+                return console.error(err.message);
+              }
+              console.log(`SERVER: Modificato il parcheggio con ID ${values.id} con il nuovo valore "${newValue}"`);
+            });
+          // Rispondi con una conferma
+          
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ message: 'Dati aggiornati con successo'}));
+          
+      } catch (error) {
+          // Se c'è un errore nel parsing dei dati JSON
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ message: 'Errore nella richiesta: dati JSON non validi' }));
+      }
+      });
+
+    }
+  
+    //POST "/admin/addNewParking" per aggiungere un nuovo parcheggio
+      else if (req.method === 'POST' && pathname === '/admin/addNewParking'){
+      // Inizializzare una stringa per memorizzare i dati ricevuti
+      let body = '';
+      
+      // Gestire i dati ricevuti
+      req.on('data', (chunk) => {
+       body += chunk;
+      });
+
+      // Alla fine dei dati ricevuti
+      req.on('end', () => {
+      try {
+          const newID=support.makeid(10);
+          // Parsifico i dati JSON ricevuti
+          const data = JSON.parse(body);
+          const values={"zone":data["zone"],"spots":data["spots"]};
+          // Qui puoi gestire i dati come preferisci, ad esempio aggiornando un database
+          const sqlInsertNewParking='INSERT INTO Parcheggi VALUES (?,?,?,?)'
+          db.run(sqlInsertNewParking, [newID,values.zone,values.spots,0], function(err) {
+              if (err) {
+                return console.error(err.message);
+              }
+              console.log(`SERVER: Aggiunto nuovo parcheggio al database`);
+            });
+          // Rispondi con una conferma
+          
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ message: 'Parcheggio aggiunto con successo'}));
+          
+      } catch (error) {
+          // Se c'è un errore nel parsing dei dati JSON
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ message: 'Errore nella richiesta: dati JSON non validi' }));
+      }
+      });
+    }
+
+    //DELETE "/admin/removeParking" per eliminare un parcheggio
+      else if (req.method === 'DELETE' && pathname === '/admin/removeParking'){
+      // Inizializzare una stringa per memorizzare i dati ricevuti
+      let body = '';
+      
+      // Gestire i dati ricevuti
+      req.on('data', (chunk) => {
+       body += chunk;
+      });
+
+      // Alla fine dei dati ricevuti
+      req.on('end', () => {
+      try {
+          // Parsifico i dati JSON ricevuti
+          const idParkingToRemove = JSON.parse(body);
+
+          const sqlDeleteNewParking='DELETE FROM Parcheggi WHERE ID = ?'
+          db.run(sqlDeleteNewParking, [idParkingToRemove], function(err) {
+              if (err) {
+                return console.error(err.message);
+              }
+              console.log(`SERVER: Cancellato parcheggio dal database`);
+            });
+          // Rispondi con una conferma
+          
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ message: 'Parcheggio rimosso con successo'}));
+          
+      } catch (error) {
+          // Se c'è un errore nel parsing dei dati JSON
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ message: 'Errore nella richiesta: dati JSON non validi' }));
+      }
+      });
+    }
+    //---------------------------------------------------------
+
+    //GET tutti i dati dei parcheggi
+      else if (req.method === 'GET' && pathname === '/getAllParkings') {
         // Imposta l'intestazione della risposta come JSON
         res.setHeader('Content-Type', 'application/json');
         db.all('SELECT * FROM Parcheggi', (err, rows) => {
@@ -130,7 +250,8 @@ const server = https.createServer(options,async (req, res) => {
         
     }
 
-    // GET "/user"
+    //---------------------------------------------------------AREA AMMINISTRATORE
+    // GET Pagina Utente
     else if (req.method === 'GET' && pathname === '/user') {
         nameFile='user';
         filePath = path.join(__dirname, 'public/views', `${nameFile}.html`);
@@ -138,122 +259,8 @@ const server = https.createServer(options,async (req, res) => {
         support.readFile(filePath,contentType,res);
     }
 
-    // PUT "/admin/changeStatusParking" per cambiare lo stato di un parcheggio
-    else if (req.method === 'PUT' && pathname === '/admin/changeStatusParking') {
-
-        // Inizializzare una stringa per memorizzare i dati ricevuti
-        let body = '';
-        
-        // Gestire i dati ricevuti
-        req.on('data', (chunk) => {
-         body += chunk;
-        });
-
-        // Alla fine dei dati ricevuti
-        req.on('end', () => {
-        try {
-            // Parsifico i dati JSON ricevuti
-            const data = JSON.parse(body).split(":");
-
-            //Metto i dati in un oggetto per comodità
-            const values={"id":data[0], "currentStatus":data[1]}
-            //preparo il nuovo valore che è l'opposto di quello attuale
-            var newValue=(values.currentStatus==0)?1:0;
-
-            // Qui puoi gestire i dati come preferisci, ad esempio aggiornando un database
-            const sqlChangeStatusParking='UPDATE Parcheggi SET Stato = ? WHERE ID = ?'
-            db.run(sqlChangeStatusParking, [newValue, values.id], function(err) {
-                if (err) {
-                  return console.error(err.message);
-                }
-                console.log(`SERVER: Modificato il parcheggio con ID ${values.id} con il nuovo valore "${newValue}"`);
-              });
-            // Rispondi con una conferma
-            
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: 'Dati aggiornati con successo'}));
-            
-        } catch (error) {
-            // Se c'è un errore nel parsing dei dati JSON
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: 'Errore nella richiesta: dati JSON non validi' }));
-        }
-        });
-
-    }
-    
-    //POST "/admin/addNewParking" per aggiungere un nuovo parcheggio
-    else if (req.method === 'POST' && pathname === '/admin/addNewParking'){
-        // Inizializzare una stringa per memorizzare i dati ricevuti
-        let body = '';
-        
-        // Gestire i dati ricevuti
-        req.on('data', (chunk) => {
-         body += chunk;
-        });
-
-        // Alla fine dei dati ricevuti
-        req.on('end', () => {
-        try {
-            const newID=support.makeid(10);
-            // Parsifico i dati JSON ricevuti
-            const data = JSON.parse(body);
-            const values={"zone":data["zone"],"spots":data["spots"]};
-            // Qui puoi gestire i dati come preferisci, ad esempio aggiornando un database
-            const sqlInsertNewParking='INSERT INTO Parcheggi VALUES (?,?,?,?)'
-            db.run(sqlInsertNewParking, [newID,values.zone,values.spots,0], function(err) {
-                if (err) {
-                  return console.error(err.message);
-                }
-                console.log(`SERVER: Aggiunto nuovo parcheggio al database`);
-              });
-            // Rispondi con una conferma
-            
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: 'Parcheggio aggiunto con successo'}));
-            
-        } catch (error) {
-            // Se c'è un errore nel parsing dei dati JSON
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: 'Errore nella richiesta: dati JSON non validi' }));
-        }
-        });
-    }
-
-    else if (req.method === 'DELETE' && pathname === '/admin/removeParking'){
-        // Inizializzare una stringa per memorizzare i dati ricevuti
-        let body = '';
-        
-        // Gestire i dati ricevuti
-        req.on('data', (chunk) => {
-         body += chunk;
-        });
-
-        // Alla fine dei dati ricevuti
-        req.on('end', () => {
-        try {
-            // Parsifico i dati JSON ricevuti
-            const idParkingToRemove = JSON.parse(body);
-
-            const sqlDeleteNewParking='DELETE FROM Parcheggi WHERE ID = ?'
-            db.run(sqlDeleteNewParking, [idParkingToRemove], function(err) {
-                if (err) {
-                  return console.error(err.message);
-                }
-                console.log(`SERVER: Cancellato parcheggio dal database`);
-              });
-            // Rispondi con una conferma
-            
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: 'Parcheggio rimosso con successo'}));
-            
-        } catch (error) {
-            // Se c'è un errore nel parsing dei dati JSON
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: 'Errore nella richiesta: dati JSON non validi' }));
-        }
-        });
-    }
+    //---------------------------------------------------------AREA UTENTE
+   
 
     // Gestisci richieste GET per la pagina CSS e Javascript, nameFile contiene il nome della pagina da caricare
     else if (req.method === 'GET' && (pathname.endsWith('.css') || pathname.endsWith('.js'))) {
@@ -268,7 +275,7 @@ const server = https.createServer(options,async (req, res) => {
         support.readFile(filePath,contentType,res);
     }
 
-    // Gestisci altre richieste
+    // Nel caso non esista la pagina
     else {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('Page not found');
@@ -282,7 +289,6 @@ const port = 8443;
 server.listen(port, () => {
   console.log(`Server in ascolto sulla porta ${port}`);
 });
-
 
 
 
@@ -437,6 +443,10 @@ async function handlePayment(id_ticket) {
     try {
       //estraggo l'istanza del ticket nel database
       const rowData=await getRowTicketsByID(id_ticket);
+      if(rowData===undefined){
+        console.log("il ticket non esiste")
+        return;
+      }
 
       let responsePayment={
         id_parking:rowData["IDparking"],
@@ -445,6 +455,7 @@ async function handlePayment(id_ticket) {
 
       //se il ticket è già pagato avviso l'utente
       if(rowData["Stato"]=="Pagato"){
+        console.log("ticket già pagato");
         responsePayment.result=`Ticket: [${id_ticket}] Gia' Pagato`
         return responsePayment
       }
