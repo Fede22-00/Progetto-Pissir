@@ -4,12 +4,13 @@
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const db = require('./db');
 const url= require('url');
+const db = require('./db');
 const querystring = require('querystring');
 const support=require('./supportFunctions');
 const {google} = require('googleapis');
 const mqtt = require('mqtt');
+const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 
 
 //=================================================================================================|
@@ -291,77 +292,11 @@ server.listen(port, () => {
 });
 
 
-
 //=================================================================================================|
 //========================================== [MQTT] ===============================================|
 //=================================================================================================|
-// Configurazione del client MQTT
-const brokerURL='mqtts://test.mosquitto.org:8883'
-const client = mqtt.connect(brokerURL, {
-  ca: [fs.readFileSync('ssl/secure-broker/mosquitto.org.crt')], // Percorso al tuo certificato CA
-  rejectUnauthorized: true, // Impedisce connessioni non autorizzate
-});
 
-const topics=['smartparking/entry/request','smartparking/payment/request','smartparking/exit/request']
-
-//====================
-//|Eventi CLIENT MQTT|
-//============================================================================
-//connette il client al broker
-client.on('connect', () => {
-  console.log(`Connesso al broker MQTT su TLS/SSL: ${brokerURL}`);
-
-  // Sottoscrizione a tutti i topic nell'array
-  client.subscribe(topics, (err, granted) => {
-    if (!err) {
-      //stampa tutti i percorsi a cui il server sottoscrive
-      console.log('Sottoscrizione avvenuta con successo ai seguenti topic:');
-      granted.forEach((grant) => {
-        console.log(`  - ${grant.topic}`);
-      });
-    } else {
-      console.error('Errore durante la sottoscrizione:', err);
-    }
-  });
-});
-
-//il server rimane in ascolto per i messaggi dell'utente
-client.on('message',(topic, message) => {
-  console.log(`Messaggio ricevuto su ${topic}: ${message.toString()}`);
-
-  //smartparking/entry/request
-  //in questo caso ID è quello del parcheggio
-  if(topic==='smartparking/entry/request'){
-    const IDparking=message.toString();
-    handleEntry(IDparking).then((response)=>{
-      sendResponse(IDparking,"entry",response);
-    })
-  }
-   //smartparking/payment/request
-  else if(topic==='smartparking/payment/request'){
-    const IDticket=message.toString();
-    handlePayment(IDticket).then((response)=>{
-      sendResponse(response.id_parking,"payment",response.result);
-    })
-  }
-  //smartparking/exit/request
-  else if(topic==='smartparking/exit/request'){
-    const IDticket=message.toString();
-    handleExit(IDticket).then((response)=>{
-      sendResponse(response.id_parking,"exit",response.result);
-    }).catch((error)=>{
-      console.error(error);
-    });
-  }
-});
-
-client.on('error', (err) => {
-  console.error('Errore di connessione MQTT:', err);
-});
-
-client.on('close', () => {
-  console.log('Connessione MQTT chiusa');
-});
+/*
 
 //INVIA RISPOSTA SU MQTT
 function sendResponse(id_parking,device,response){
@@ -376,66 +311,62 @@ function sendResponse(id_parking,device,response){
       }
     });
 }
-
+*/
 //==================================
 //|Gestore funzionamento dei device|
 //============================================================================
 
 //Gestisce la sbarra di ingresso
 async function handleEntry(id_parking) {
-  //Estraggo i numeri del parcheggio
-  let responseEntry;
 
   try {
+    //estraggo i dati di un certo parcheggio
     let rowData=await getRowParkingByID(id_parking);
-    
+    if(rowData===undefined){
+      throw new Error("Il parcheggio non esiste");
+    }
     //prima controllo se il parcheggio è chiuso o aperto
     if(rowData["Stato"]==1)return "Parcheggio chiuso, non puoi entrare"
 
+    //controllo il numero di posti disponibili nel parcheggio
     const spots=rowData["Posti"];
   
-  //se il numero non è 0 allora:
+      //se i posti sono >0 allora:
+      if(spots>0){
+        
+        //1 - genero un ticket per l'utente e lo metto nella tabella "Tickets"
+                //{IDticket , IDparking}
+        const IDticket=support.makeid(20);
+        const sqlInsertNewTicket="INSERT INTO Tickets (IDticket,IDparking) VALUES (?,?)";
+        db.run(sqlInsertNewTicket,[IDticket,id_parking],(err,row)=>{
+          if (err) {
+            console.error(err.message);
+            throw new Error(err.message)
+          }
+          else console.log(`DATABASE: Nuovo ticket inserito: [${IDticket},${id_parking}]`);
+        })
+        
+        //2 - decremento i posti alla tabella "Parcheggi" del database
+        const sqlDecreaseSpots="UPDATE Parcheggi SET Posti = ? WHERE ID = ?";
+        const newValueSpots=spots-1;
 
-  //1 - genero un ticket per l'utente e lo metto nella tabella "Tickets"
-            //{IDticket , IDparking}
+        db.run(sqlDecreaseSpots,[newValueSpots,id_parking], (err) => {
+          if (err) {
+            console.error(err.message);
+            throw new Error(err.message);
+          }
+          else console.log("DATABASE: Posto decrementato");
+        })
 
-  //2 - decremento i posti sul database alla tabella "Parcheggi"
-
-  //3 - salvo il ticket nella variabile response, sovrascrivendola
-
-  //se il numero è 0 allora verrà inviato "Parcheggio pieno"
-  if(spots>0){
-    //--------------------------------------------------------------------1
-    const IDticket=support.makeid(20);
-    const sqlInsertNewTicket="INSERT INTO Tickets (IDticket,IDparking) VALUES (?,?)";
-    
-    //aggiungi al database il nuovo ticket
-    db.run(sqlInsertNewTicket,[IDticket,id_parking],(err,row)=>{
-      if (err) {
-        return console.error(err.message);
+        //3 - restituisco il ticket
+        return "Benvenuto! TICKET: ["+IDticket+"]";
       }
-      console.log(`DATABASE: Nuovo ticket inserito: [${IDticket},${id_parking}]`);
-    })
-    //--------------------------------------------------------------------2
-    const sqlDecreaseSpots="UPDATE Parcheggi SET Posti = ? WHERE ID = ?";
-    const newValueSpots=spots-1;
-
-    //aggiorno il database
-    db.run(sqlDecreaseSpots,[newValueSpots,id_parking], (err) => {
-      if (err) {
-          console.error(err)
-        return;
-      }
-          console.log("DATABASE: Posto decrementato");
-    })
-    responseEntry="Benvenuto! TICKET: ["+IDticket+"]";
-  }
-  else responseEntry="Parcheggio Pieno"
+  //altrimenti dico all'utente che il parcheggio è pieno
+  else return "Parcheggio Pieno"
 
   } catch (error) {
-    console.log("errore");
+    console.error(error);
   }
-  return responseEntry;
 }
 
 //Gestisce la cassa per pagare il ticket
@@ -444,8 +375,7 @@ async function handlePayment(id_ticket) {
       //estraggo l'istanza del ticket nel database
       const rowData=await getRowTicketsByID(id_ticket);
       if(rowData===undefined){
-        console.log("il ticket non esiste")
-        return;
+        throw new Error("Il ticket non esiste");
       }
 
       let responsePayment={
@@ -455,7 +385,7 @@ async function handlePayment(id_ticket) {
 
       //se il ticket è già pagato avviso l'utente
       if(rowData["Stato"]=="Pagato"){
-        console.log("ticket già pagato");
+        console.log("Ticket già pagato");
         responsePayment.result=`Ticket: [${id_ticket}] Gia' Pagato`
         return responsePayment
       }
@@ -465,6 +395,7 @@ async function handlePayment(id_ticket) {
       db.run(sqlPayTicket,["Pagato",id_ticket],(err)=>{
         if(err){
           console.error(err)
+          throw new Error(err.message)
         }
          console.log(`DATABASE: Ticket pagato`);
         })
@@ -475,34 +406,44 @@ async function handlePayment(id_ticket) {
         console.error(error);
       }
 }
+
 //Gestisce la sbarra di uscita
 async function handleExit(id_ticket){
   try {
+    //controllo se esiste un'istanza del ticket nel database
     const rowData=await getRowTicketsByID(id_ticket)
+    if(rowData===undefined){
+      throw new Error("Il ticket non esiste");
+    }
+
+    //estraggo l'id del parcheggio
     const IDparking=rowData["IDparking"]
 
+    //preparo il messaggio
     let responseExit={
       id_parking:rowData["IDparking"],
       result:null
     };
 
+    //se il ticket non è stato pagato rifiuto la richiesta di uscita
     if(rowData["Stato"]=="Non pagato"){
       responseExit.result="Il ticket non è stato pagato";
       return responseExit;
     }
     
-    //--------------------------------------------------------------------1
+    //se è stato pagato rimuovo il ticket da quelli del database
     const sqlDeleteTicket="DELETE FROM Tickets WHERE IDticket = ?";
     
     //aggiungi al database il nuovo ticket
     db.run(sqlDeleteTicket,[id_ticket],(err,row)=>{
       if (err) {
-        return console.error(err.message);
+        console.error(err)
+        throw new Error(err.message);
       }
-      console.log(`DATABASE: Ticket eliminato: [${id_ticket},${IDparking}]`);
+      else console.log(`DATABASE: Ticket eliminato: [${id_ticket},${IDparking}]`);
     })
 
-    //--------------------------------------------------------------------2
+    //incremento di uno il numero di posti nel database
     let rowDataParking=await getRowParkingByID(IDparking);
     
     const spots=rowDataParking["Posti"];
@@ -514,9 +455,9 @@ async function handleExit(id_ticket){
     db.run(sqlIncreaseSpots,[newValueSpots,IDparking], (err) => {
       if (err) {
           console.error(err)
-        return;
+          throw new Error(err.message);
       }
-          console.log("DATABASE: Posto incrementato");
+      else console.log("DATABASE: Posto incrementato");
     })
 
     responseExit.result="Ticket pagato. Arrivederci! :)";
@@ -527,8 +468,7 @@ async function handleExit(id_ticket){
   }
 }
 
-
-
+//-------------------funzioni che agiscono sul database
 
 //estrai una certa riga dalla tabella Parcheggi dato l'id
 function getRowParkingByID(id_parking){
@@ -566,5 +506,92 @@ function getRowTicketsByID(id_ticket){
   })
 }
 
+
+if (isMainThread) {
+  const entryWorker = new Worker('./mqtt-workers/entryWorker.js', { workerData: { topic: 'smartparking/entry/request' } });
+  const paymentWorker = new Worker('./mqtt-workers/paymentWorker.js', { workerData: { topic: 'smartparking/payment/request' } });
+  const exitWorker = new Worker('./mqtt-workers/exitWorker.js', { workerData: { topic: 'smartparking/exit/request' } });
+
+//STRUTTURA MESSAGGIO DEL THREAD:
+/*
+    {
+      purpose: scopo del messaggio,
+      message: contenuto del messaggio da inviare
+    }
+**/
+
+//STRUTTURA MESSAGGIO DA INVIARE AL THREAD:
+/*
+    {
+      ID: id del parcheggio che deve ricevere la risposta,
+      message: contenuto del messaggio da stampare
+    }
+**/
+
+  // Aspetto un messaggio dal thread dedicato all'ingresso
+  entryWorker.on('message', (data) => {
+    //se lo scopo del messaggio inviato dal thread è per una comunicazione mqtt procedo
+    if(data.purpose==="mqtt-entry"){
+      // stampo per scopi di denug il messaggio ricevuto dal thread
+      console.log('Messaggio da entryWorker:', data);
+      //salvo l'id del parcheggio ricevuto dal thread 
+      const id=data.message;
+      //gestisco l'ingresso facendo controlli
+      handleEntry(id)
+      //se ricevo un esito positivo invio al thread dedicato l'id del parcheggio e il risultato dell'elaborazione
+      .then(result=>{
+          entryWorker.postMessage({IDParking:id, message:result})
+      })
+      .catch((error)=>console.error(error))
+    }
+    //altrimenti tratto i messaggi per debuggging da stampare su terminale
+    else if(data.purpose=="debugging"){
+      console.log('Messaggio da entryWorker:', data);
+    }
+  });
+
+  // Aspetto un messaggio dal thread dedicato ai pagamenti
+  paymentWorker.on('message', (data) => {
+    //se lo scopo del messaggio inviato dal thread è per una comunicazione mqtt procedo
+    if(data.purpose==="mqtt-payment"){
+      // stampo per scopi di denug il messaggio ricevuto dal thread
+      console.log('Messaggio da paymentWorker:', data);
+      //salvo l'id del parcheggio ricevuto dal thread 
+      const id=data.message;
+      //gestisco l'ingresso facendo controlli
+      handlePayment(id)
+      .then((response)=>{
+        paymentWorker.postMessage({IDParking:response.id_parking, message:response.result})
+      })
+      .catch((error)=>console.error(error))
+    }
+    //altrimenti tratto i messaggi per debuggging da stampare su terminale
+    else if(data.purpose=="debugging"){
+      console.log('Messaggio da paymentWorker:', data);
+    }
+  });
+
+  // Aspetto un messaggio dal thread dedicato all'uscita
+  exitWorker.on('message', (data) => {
+    //se lo scopo del messaggio inviato dal thread è per una comunicazione mqtt procedo
+    if(data.purpose==="mqtt-exit"){
+      // stampo per scopi di denug il messaggio ricevuto dal thread
+      console.log('Messaggio da exitWorker:', data);
+      //salvo l'id del parcheggio ricevuto dal thread 
+      const id=data.message;
+      //gestisco l'ingresso facendo controlli
+      handleExit(id)
+      .then((response)=>{
+        exitWorker.postMessage({IDParking:response.id_parking, message:response.result})
+      })
+      .catch((error)=>console.error(error))
+    }
+    //altrimenti tratto i messaggi per debuggging da stampare su terminale
+    else if(data.purpose=="debugging"){
+      console.log('Messaggio da exitWorker:', data);
+    }
+  });
+
+}
 
 
