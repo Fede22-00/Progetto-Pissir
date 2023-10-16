@@ -15,7 +15,7 @@ const { Worker, isMainThread} = require('worker_threads');
 //-----------------------------DATI DEL SERVER KEYCLOAK
 const keycloak = {
   "realm": "SmartParking",
-  "auth-server-url": "http://localhost:8080/",
+  "auth-server-url": "https://localhost:8500/",
   "ssl-required": "external",
   "resource": "myclient",
   "verify-token-audience": true,
