@@ -1,0 +1,14 @@
+{
+  "realm": "SmartParking",
+  "auth-server-url": "http://localhost:8080/",
+  "ssl-required": "external",
+  "resource": "myclient",
+  "verify-token-audience": true,
+  "credentials": {
+    "secret": "2Q4abiEbYMV15pX4fIO2AYqFdWhCdjVM"
+  },
+  "confidential-port": 0,
+  "policy-enforcer": {
+    "credentials": {}
+  }
+}

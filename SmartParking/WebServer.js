@@ -1,122 +1,141 @@
 'use strict';
 
-//librerie importate
+//---------------LIBRERIE
 const https = require('https');
+const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const url= require('url');
 const db = require('./db');
+const jwt=require('jsonwebtoken')
 const querystring = require('querystring');
 const support=require('./supportFunctions');
-const {google} = require('googleapis');
-const mqtt = require('mqtt');
-const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
+const { Worker, isMainThread} = require('worker_threads');
 
+//-----------------------------DATI DEL SERVER KEYCLOAK
+const keycloak = {
+  "realm": "SmartParking",
+  "auth-server-url": "http://localhost:8080/",
+  "ssl-required": "external",
+  "resource": "myclient",
+  "verify-token-audience": true,
+  "credentials": {
+    "secret": "2Q4abiEbYMV15pX4fIO2AYqFdWhCdjVM"
+  },
+  "confidential-port": 0,
+  "policy-enforcer": {
+    "credentials": {}
+  }
+};
 
 //=================================================================================================|
 //==================================== [WEB API REST] =============================================|
 //=================================================================================================|
-//-------------------------------------OAUTH 2.0
-/**
- * To use OAuth2 authentication, we need access to a CLIENT_ID, CLIENT_SECRET, AND REDIRECT_URI
- * from the client_secret.json file. To get these credentials for your application, visit
- * https://console.cloud.google.com/apis/credentials.
- */
-const client_datas={
-  "client_id":"935915899578-sj5avm190f533igj9rbf2f5sp8n7aeul.apps.googleusercontent.com",
-  "client_secret":"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",
-  "redirect_uris":["https://localhost:8443/auth/google/callback"]
-}
 
-const oauth2Client = new google.auth.OAuth2(
-  client_datas.client_id,
-  client_datas.client_secret,
-  client_datas.redirect_uris[0]
-);
-
-// Access scopes for read-only Drive activity.
-const scopes = [
-  'https://www.googleapis.com/auth/userinfo.email',
-];
-
-// Generate a url that asks permissions for the Drive activity scope
-const authorizationUrl = oauth2Client.generateAuthUrl({
-  /** Pass in the scopes array defined above.
-    * Alternatively, if only one scope is needed, you can pass a scope URL as a string */
-  scope: scopes,
-  // Enable incremental authorization. Recommended as a best practice.
-  include_granted_scopes: true
-});
-
-
+//---------certificato e chiave privata per https
 var options = {
-    key: fs.readFileSync('./ssl/https-web/server.key'),
-    cert: fs.readFileSync('./ssl/https-web/server.crt')
-  };
+  key: fs.readFileSync('./ssl/https-web/server.key'),
+  cert: fs.readFileSync('./ssl/https-web/server.crt')
+};
 
+//variabili per cambiare pagina
   let nameFile;
   let contentType;
   let filePath;
-  let isAdmin=false;
+
+//CREAZIONE DEL SERVER
 const server = https.createServer(options,async (req, res) => {
-    //------------------PAGINA INIZIALE------------------
+
+    //divido l'url in path e query
     const { pathname, query } = url.parse(req.url);
-    const params = querystring.parse(query);
-    //console.log("--------------")
-    console.log("pathname -> "+pathname);
-    //console.log("query -> "+query);
-    //console.log("params -> "+JSON.stringify(params));
-    //console.log("--------------")
+    const queryParams = querystring.parse(query);
     
-    // GET homepage
+    console.log("pathname -> "+pathname);
+
+
+    // Homepage
     if (req.method === 'GET' && pathname === '/') {
         nameFile='root';
         filePath = path.join(__dirname, 'public/views', `${nameFile}.html`);
         contentType = 'text/html'
         support.readFile(filePath,contentType,res);
     }
-
-    //GET AUTORIZZAZIONE Google OAUTH2
-    else if(req.method === 'GET' && pathname==='/auth/google'){
-      res.writeHead(301, { "Location": authorizationUrl });
+    
+    //--------------------------------------------------------OAUTH 2.0
+    // url se viene richiesto l'accesso
+    else if(req.method === 'GET' && pathname === '/auth/keycloak'){
+      // L'utente non è autenticato, effettua il reindirizzamento a Keycloak per l'autenticazione
+        const redirectUrl = `${keycloak["auth-server-url"]}/realms/${keycloak["realm"]}/protocol/openid-connect/auth` +
+        `?client_id=${keycloak["resource"]}`+
+        `&redirect_uri=https://localhost:8443/auth/keycloak/callback`+
+        `&response_type=code`; // L'URL a cui verrai reindirizzato dopo l'autenticazione
+      res.writeHead(301, { Location: redirectUrl });
       res.end();
     }
 
-    //GET Callback autorizzazione
-    else if(req.method === 'GET' && pathname==='/auth/google/callback'){
-      // Handle the OAuth 2.0 server response
-      let q = url.parse(req.url,true).query;
-
-      if(q.error){
-        res.end("Accesso non autorizzato");
-      }else{
-        // Get access and refresh tokens (if access_type is offline)
-        oauth2Client.getToken(q.code).then((tokens)=>{
-          oauth2Client.setCredentials(tokens);
-          console.log(oauth2Client.credentials);
-          res.writeHead(301,{'Location':`https://localhost:8443/admin?code=true`})
-          res.end()
-        })
-        
+    //url di callback dopo l'accesso
+    else if(req.method === 'GET' && pathname === '/auth/keycloak/callback'){
+      if(queryParams.code){
+        const auth_code = queryParams.code;
+        const requestBody = querystring.stringify({
+          grant_type: 'authorization_code',
+          code: auth_code,
+          client_id: keycloak["resource"],
+          client_secret: keycloak["credentials"]["secret"],
+          redirect_uri: "https://localhost:8443/auth/keycloak/callback",
+        });
+      
+        const options = {
+          hostname: "localhost",
+          port: 8080,
+          path: `/realms/${keycloak["realm"]}/protocol/openid-connect/token`,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': requestBody.length,
+          },
+        };
+      
+        const request = http.request(options, (response) => {
+          let data = '';
+      
+          response.on('data', (chunk) => {
+            data += chunk;
+          });
+      
+          response.on('end', () => {
+            const tokenData = JSON.parse(data);
+            const access_token = tokenData.access_token
+            const username=(jwt.decode(access_token))["preferred_username"]
+            res.writeHead(301,{"Location":`/admin?admin_username=${username}`})
+            res.end()
+          });
+        });
+      
+        request.on('error', (error) => {
+          console.log(error)
+        });
+      
+        request.write(requestBody);
+        request.end();
       }
-
     }
 
     //---------------------------------------------------------AREA AMMINISTRATORE
-    // GET Pagina amministratore
+    // Pagina amministratore
     else if (req.method === 'GET' && pathname === '/admin') {
-      if(params.code==="true"){
+      if(queryParams.admin_username){
           nameFile='admin';
           filePath = path.join(__dirname, 'public/views', `${nameFile}.html`);
           contentType = 'text/html'
           support.readFile(filePath,contentType,res);
       }
      else{
-        res.writeHead(301,{"Location":"/auth/google"})
+        res.writeHead(301,{"Location":"/auth/keycloak"})
         res.end()
       }
     }
-
+    
      // PUT "/admin/changeStatusParking" per cambiare lo stato di un parcheggio
      else if (req.method === 'PUT' && pathname === '/admin/changeStatusParking') {
 
@@ -160,7 +179,7 @@ const server = https.createServer(options,async (req, res) => {
       });
 
     }
-  
+    
     //POST "/admin/addNewParking" per aggiungere un nuovo parcheggio
       else if (req.method === 'POST' && pathname === '/admin/addNewParking'){
       // Inizializzare una stringa per memorizzare i dati ricevuti
@@ -198,7 +217,7 @@ const server = https.createServer(options,async (req, res) => {
       }
       });
     }
-
+    
     //DELETE "/admin/removeParking" per eliminare un parcheggio
       else if (req.method === 'DELETE' && pathname === '/admin/removeParking'){
       // Inizializzare una stringa per memorizzare i dati ricevuti
@@ -234,8 +253,17 @@ const server = https.createServer(options,async (req, res) => {
       }
       });
     }
-    //---------------------------------------------------------
 
+    //---------------------------------------------------------AREA UTENTE
+    // GET Pagina Utente
+    else if (req.method === 'GET' && pathname === '/user') {
+      nameFile='user';
+      filePath = path.join(__dirname, 'public/views', `${nameFile}.html`);
+      contentType = 'text/html'
+      support.readFile(filePath,contentType,res);
+  }
+
+    //--------------------------------------------------------GENERICI
     //GET tutti i dati dei parcheggi
       else if (req.method === 'GET' && pathname === '/getAllParkings') {
         // Imposta l'intestazione della risposta come JSON
@@ -250,18 +278,6 @@ const server = https.createServer(options,async (req, res) => {
           });
         
     }
-
-    //---------------------------------------------------------AREA AMMINISTRATORE
-    // GET Pagina Utente
-    else if (req.method === 'GET' && pathname === '/user') {
-        nameFile='user';
-        filePath = path.join(__dirname, 'public/views', `${nameFile}.html`);
-        contentType = 'text/html'
-        support.readFile(filePath,contentType,res);
-    }
-
-    //---------------------------------------------------------AREA UTENTE
-   
 
     // Gestisci richieste GET per la pagina CSS e Javascript, nameFile contiene il nome della pagina da caricare
     else if (req.method === 'GET' && (pathname.endsWith('.css') || pathname.endsWith('.js'))) {
@@ -283,9 +299,7 @@ const server = https.createServer(options,async (req, res) => {
     }
 });
 
-//--------------------HTTPS
-
-// Avvio del server su una porta unica
+// Avvio del server sulla porta sicura
 const port = 8443;
 server.listen(port, () => {
   console.log(`Server in ascolto sulla porta ${port}`);
@@ -296,24 +310,8 @@ server.listen(port, () => {
 //========================================== [MQTT] ===============================================|
 //=================================================================================================|
 
-/*
-
-//INVIA RISPOSTA SU MQTT
-function sendResponse(id_parking,device,response){
-  //invio la response all'utente al topic "smartparking/{ID_PARKING}/entry/response"
-    const topic = `smartparking/${id_parking}/${device}/response`;
-    const message = response;
-    client.publish(topic, message, (err) => {
-      if (!err) {
-        console.log(`Messaggio pubblicato con successo su ${topic}: ${message}`);
-      } else {
-        console.error('Errore durante la pubblicazione del messaggio:', err);
-      }
-    });
-}
-*/
-//==================================
-//|Gestore funzionamento dei device|
+//============================================================================
+//                       |Gestore funzionamento dei device|
 //============================================================================
 
 //Gestisce la sbarra di ingresso

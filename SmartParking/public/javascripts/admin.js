@@ -7,11 +7,13 @@ class Parking{
         this.status=element["Stato"];
     }
 }
+
+//tengo salvata la root
 const urlRoot="https://localhost:8443"
 const table=document.getElementById('parkingsTable');
 
 let parkings=[];
-
+//tasto per uscire dalla pagina
 const logout_button=document.getElementById("home-button");
 logout_button.addEventListener('click',function(){
   window.location.href = '/';
@@ -110,16 +112,14 @@ fetch(urlRoot+'/getAllParkings')
     statusButtons.forEach(function(button) {
       button.addEventListener('click', function() {
         
-        console.log(button.value);
-
         // Opzioni per la richiesta PUT
         const options = {
-          method: 'PUT', // Specifica il metodo HTTP
+          method: 'PUT', 
           headers: {
-            'Content-Type': 'application/json' // Specifica il tipo di dati inviati (JSON in questo caso)
+            'Content-Type': 'application/json' 
           },
-          //invio il body composto da "ID:valore"
-          body: JSON.stringify(button.value) // Converte l'oggetto JavaScript in una stringa JSON
+          //invio il body 
+          body: JSON.stringify(button.value)
         };
 
         //eseguo una richiesta PUT per modificare il valore del parcheggio
@@ -140,26 +140,28 @@ fetch(urlRoot+'/getAllParkings')
     console.error('Si è verificato un errore nella richiesta:', error);
   });
 
+//gestisce il form per creare un nuovo parcheggio
 const addParkingForm=document.getElementById('addNewParkingForm');
 
 // Gestisci l'evento di invio del form
   addParkingForm.addEventListener('submit', function(event) {
     event.preventDefault()
-    // Accedi ai valori dei campi di input
+
     //prendo il nome della zona per il nuovo parcheggio
     const zoneNewParking = document.getElementById('zoneNewParking').value;
+
     //prendo la quantità disponibile di posti
     let spotsNewParking = document.getElementById('spotsNewParking').value;
     if(zoneNewParking==='')return;
     else if(spotsNewParking==='') spotsNewParking='1'
       // Opzioni per la richiesta POST
       const options = {
-        method: 'POST', // Specifica il metodo HTTP
+        method: 'POST',
         headers: {
-          'Content-Type': 'application/json' // Specifica il tipo di dati inviati (JSON in questo caso)
+          'Content-Type': 'application/json'
         },
-        //invio il body composto da numero nuovo del parcheggio in quella zona e il nome della zona scelta
-        body: JSON.stringify({"spots":spotsNewParking, "zone":zoneNewParking}) // Converte l'oggetto JavaScript in una stringa JSON
+        //invio il body composto dal nome della nuova zona e il numero di posti
+        body: JSON.stringify({"zone":zoneNewParking,"spots":spotsNewParking,}) // Converte l'oggetto JavaScript in una stringa JSON
       };
 
     fetch(urlRoot+'/admin/addNewParking',options)
@@ -175,6 +177,16 @@ const addParkingForm=document.getElementById('addNewParkingForm');
 
   });
 
+  // Ottieni la stringa di query dalla URL corrente
+const queryString = window.location.search;
+
+// Rimuovi il "?" iniziale dalla stringa di query
+const searchParams = new URLSearchParams(queryString);
+
+// Estrai un parametro specifico
+const username = searchParams.get('admin_username');
+
+document.getElementById("admin-username").innerHTML="Benvenuto "+username
  
 
 
