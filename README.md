@@ -8,7 +8,7 @@
 
 3.  Avvia il server con `node WebServer.js`
 
-4.  Avviare il server di autenticazione:
+4.  Avviare il server di autenticazione in TLS:
 
     Eseguire il seguente comando nella cartella contenente il software di KeyCloak:
 
