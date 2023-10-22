@@ -6,7 +6,7 @@
 
 2.  Eseguire il comando `npm install` per installare le dipendenze in package.json
 
-3.  Avvia il server con `node WebServer.js`
+3.  Avviare il server con `node WebServer.js`
 
 4.  Avviare il server di autenticazione in TLS:
 

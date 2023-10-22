@@ -11,7 +11,7 @@
 
 -PER COMUNICARE		
 
-./mosquitto_pub -t smartparking/{ID_PARKING}/{device}/request -h test.mosquitto.org -p 8883 --cafile ./certs/mosquitto.org.crt -m {ID_PARKING|ID_TICKET}
+./mosquitto_pub -t smartparking/{device}/request -h test.mosquitto.org -p 8883 --cafile ./certs/mosquitto.org.crt -m {ID_PARKING|ID_TICKET}
 
 
 1) L'utente manda un messaggio di richiesta per entrare

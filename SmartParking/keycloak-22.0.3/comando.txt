@@ -1,0 +1,1 @@
+bin/kc.sh start-dev --https-certificate-file=server-cert.pem --https-certificate-key-file=server-key.pem --https-port=8500
